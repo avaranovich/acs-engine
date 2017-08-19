@@ -61,12 +61,25 @@ else
 	export INSTANCE_NAME="${INSTANCE_NAME:-${INSTANCE_NAME_DEFAULT}}"
 fi
 
+# Let the example json.env file set any env vars it may need ahead of time
+# (For example, the `managed-identity/kubernetes.json.env` sets env vars for a
+# custom MSI-compatible build of Kubernetes, as well as the SP cred values.)
+ENV_FILE="${CLUSTER_DEFINITION}.env"
+if [ -e "${ENV_FILE}" ]; then
+  source "${ENV_FILE}"
+fi
+
+
 # Set extra parameters
 export OUTPUT="${ROOT}/_output/${INSTANCE_NAME}"
 export RESOURCE_GROUP="${INSTANCE_NAME}"
 export DEPLOYMENT_NAME="${INSTANCE_NAME}"
 
 source "${ROOT}/test/common.sh"
+
+# Set custom dir so we don't clobber global 'az' config
+export AZURE_CONFIG_DIR="$(mktemp -d)"
+trap 'rm -rf ${AZURE_CONFIG_DIR}' EXIT
 
 make -C "${ROOT}" ci
 generate_template

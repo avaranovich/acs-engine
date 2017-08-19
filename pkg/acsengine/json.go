@@ -1,6 +1,7 @@
 package acsengine
 
 import (
+	// "fmt"
 	"encoding/json"
 	"strings"
 )
@@ -31,10 +32,30 @@ func PrettyPrintArmTemplate(template string) (string, error) {
 // PrettyPrintJSON will pretty print the json into
 func PrettyPrintJSON(content string) (string, error) {
 	var data map[string]interface{}
+	// fmt.Printf("content = %s\n", content);
+
 	if err := json.Unmarshal([]byte(content), &data); err != nil {
 		return "", err
 	}
 	prettyprint, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(prettyprint), nil
+}
+
+// BuildAzureParametersFile will add the correct schema and contentversion information
+func BuildAzureParametersFile(content string) (string, error) {
+	var parametersMap map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &parametersMap); err != nil {
+		return "", err
+	}
+	parametersAll := map[string]interface{}{}
+	parametersAll["$schema"] = "http://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#"
+	parametersAll["contentVersion"] = "1.0.0.0"
+	parametersAll["parameters"] = parametersMap
+
+	prettyprint, err := json.MarshalIndent(parametersAll, "", "  ")
 	if err != nil {
 		return "", err
 	}

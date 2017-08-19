@@ -8,21 +8,13 @@ const (
 // the orchestrators supported by vlabs
 const (
 	// DCOS is the string constant for DCOS orchestrator type and defaults to DCOS188
-	DCOS = "DCOS"
-	// DCOS188 is the string constant for DCOS 1.8.8 orchestrator type
-	DCOS188 OrchestratorType = "DCOS188"
-	// DCOS187 is the string constant for DCOS 1.8.7 orchestrator type
-	DCOS187 OrchestratorType = "DCOS187"
-	// DCOS184 is the string constant for DCOS 1.8.4 orchestrator type
-	DCOS184 = "DCOS184"
-	// DCOS173 is the string constant for DCOS 1.7.3 orchestrator type
-	DCOS173 = "DCOS173"
+	DCOS string = "DCOS"
 	// Swarm is the string constant for the Swarm orchestrator type
-	Swarm = "Swarm"
+	Swarm string = "Swarm"
 	// Kubernetes is the string constant for the Kubernetes orchestrator type
-	Kubernetes = "Kubernetes"
+	Kubernetes string = "Kubernetes"
 	// SwarmMode is the string constant for the Swarm Mode orchestrator type
-	SwarmMode = "SwarmMode"
+	SwarmMode string = "SwarmMode"
 )
 
 // the OSTypes supported by vlabs
@@ -46,7 +38,7 @@ const (
 	// MinDiskSizeGB specifies the minimum attached disk size
 	MinDiskSizeGB = 1
 	// MaxDiskSizeGB specifies the maximum attached disk size
-	MaxDiskSizeGB = 1024
+	MaxDiskSizeGB = 1023
 	// MinIPAddressCount specifies the minimum number of IP addresses per network interface
 	MinIPAddressCount = 1
 	// MaxIPAddressCount specifies the maximum number of IP addresses per network interface
@@ -63,9 +55,6 @@ const (
 
 // storage profiles
 const (
-	// StorageAccountClassic means that we follow the older versions (09-30-2016, 03-30-2016)
-	// storage account naming conventions
-	StorageAccountClassic = "StorageAccountClassic"
 	// StorageAccount means that the nodes use raw storage accounts for their os and attached volumes
 	StorageAccount = "StorageAccount"
 	// ManagedDisks means that the nodes use managed disks for their os and attached volumes

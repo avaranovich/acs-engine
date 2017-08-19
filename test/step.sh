@@ -24,6 +24,24 @@ set_azure_account)
   set_azure_account
 ;;
 
+create_resource_group)
+  create_resource_group
+;;
+
+predeploy)
+  ACSE_PREDEPLOY=${ACSE_PREDEPLOY:-}
+  if [ ! -z "${ACSE_PREDEPLOY}" ] && [ -x "${ACSE_PREDEPLOY}" ]; then
+      "${ACSE_PREDEPLOY}"
+  fi
+;;
+
+postdeploy)
+  ACSE_POSTDEPLOY=${ACSE_POSTDEPLOY:-}
+  if [ ! -z "${ACSE_POSTDEPLOY}" ] && [ -x "${ACSE_POSTDEPLOY}" ]; then
+      "${ACSE_POSTDEPLOY}"
+  fi
+;;
+
 generate_template)
   export OUTPUT="${ROOT}/_output/${INSTANCE_NAME}"
   generate_template
@@ -32,6 +50,19 @@ generate_template)
 deploy_template)
   export OUTPUT="${ROOT}/_output/${INSTANCE_NAME}"
   deploy_template
+;;
+
+get_node_count)
+  export OUTPUT="${ROOT}/_output/${INSTANCE_NAME}"
+  get_node_count
+;;
+
+get_orchestrator_type)
+  get_orchestrator_type
+;;
+
+get_orchestrator_release)
+  get_orchestrator_release
 ;;
 
 validate)

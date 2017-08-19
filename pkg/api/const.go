@@ -3,23 +3,15 @@ package api
 // the orchestrators supported by vlabs
 const (
 	// Mesos is the string constant for MESOS orchestrator type
-	Mesos OrchestratorType = "Mesos"
+	Mesos string = "Mesos"
 	// DCOS is the string constant for DCOS orchestrator type and defaults to DCOS188
-	DCOS OrchestratorType = "DCOS"
-	// DCOS187 is the string constant for DCOS 1.8.8 orchestrator type
-	DCOS188 OrchestratorType = "DCOS188"
-	// DCOS187 is the string constant for DCOS 1.8.7 orchestrator type
-	DCOS187 OrchestratorType = "DCOS187"
-	// DCOS184 is the string constant for DCOS 1.8.4 orchestrator type
-	DCOS184 OrchestratorType = "DCOS184"
-	// DCOS173 is the string constant for DCOS 1.7.3 orchestrator type
-	DCOS173 OrchestratorType = "DCOS173"
+	DCOS string = "DCOS"
 	// Swarm is the string constant for the Swarm orchestrator type
-	Swarm OrchestratorType = "Swarm"
+	Swarm string = "Swarm"
 	// Kubernetes is the string constant for the Kubernetes orchestrator type
-	Kubernetes OrchestratorType = "Kubernetes"
+	Kubernetes string = "Kubernetes"
 	// SwarmMode is the string constant for the Swarm Mode orchestrator type
-	SwarmMode OrchestratorType = "SwarmMode"
+	SwarmMode string = "SwarmMode"
 )
 
 // the OSTypes supported by vlabs
@@ -52,11 +44,47 @@ const (
 
 // storage profiles
 const (
-	// StorageAccountClassic means that we follow the older versions (09-30-2016, 03-30-2016)
-	// storage account naming conventions
-	StorageAccountClassic = "StorageAccountClassic"
 	// StorageAccount means that the nodes use raw storage accounts for their os and attached volumes
 	StorageAccount = "StorageAccount"
 	// ManagedDisks means that the nodes use managed disks for their os and attached volumes
 	ManagedDisks = "ManagedDisks"
 )
+
+const (
+	// KubernetesRelease1Dot7 is the major.minor string prefix for 1.7 versions of kubernetes
+	KubernetesRelease1Dot7 string = "1.7"
+	// KubernetesRelease1Dot6 is the major.minor string prefix for 1.6 versions of kubernetes
+	KubernetesRelease1Dot6 string = "1.6"
+	// KubernetesRelease1Dot5 is the major.minor string prefix for 1.5 versions of kubernetes
+	KubernetesRelease1Dot5 string = "1.5"
+	// KubernetesDefaultRelease is the default major.minor version for kubernetes
+	KubernetesDefaultRelease string = KubernetesRelease1Dot6
+)
+
+const (
+	// DCOSRelease1Dot9 is the major.minor string prefix for 1.9 versions of DCOS
+	DCOSRelease1Dot9 string = "1.9"
+	// DCOSRelease1Dot8 is the major.minor string prefix for 1.8 versions of DCOS
+	DCOSRelease1Dot8 string = "1.8"
+	// DCOSRelease1Dot7 is the major.minor string prefix for 1.7 versions of DCOS
+	DCOSRelease1Dot7 string = "1.7"
+	// DCOSDefaultRelease is the default major.minor version for DCOS
+	DCOSDefaultRelease string = DCOSRelease1Dot9
+)
+
+// DCOSReleaseToVersion maps a major.minor release to an full major.minor.patch version
+var DCOSReleaseToVersion = map[string]string{
+	DCOSRelease1Dot9: "1.9.0",
+	DCOSRelease1Dot8: "1.8.8",
+	DCOSRelease1Dot7: "1.7.3",
+}
+
+// KubernetesReleaseToVersion maps a major.minor release to an full major.minor.patch version
+var KubernetesReleaseToVersion = map[string]string{
+	KubernetesRelease1Dot7: "1.7.4",
+	KubernetesRelease1Dot6: "1.6.6",
+	KubernetesRelease1Dot5: "1.5.7",
+}
+
+// To identify programmatically generated public agent pools
+const publicAgentPoolSuffix = "-public"

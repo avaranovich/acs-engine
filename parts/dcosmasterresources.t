@@ -1,3 +1,16 @@
+{{if .MasterProfile.IsManagedDisks}}
+    {
+      "apiVersion": "[variables('apiVersionStorageManagedDisks')]",
+      "location": "[variables('location')]",
+      "name": "[variables('masterAvailabilitySet')]",
+      "properties": {
+        "platformFaultDomainCount": "2",
+        "platformUpdateDomainCount": "3",
+        "managed": "true"
+      },
+      "type": "Microsoft.Compute/availabilitySets"
+    },
+{{else if .MasterProfile.IsStorageAccount}}
     {
       "apiVersion": "[variables('apiVersionStorage')]",
       "dependsOn": [
@@ -10,6 +23,14 @@
       },
       "type": "Microsoft.Storage/storageAccounts"
     },
+    {
+      "apiVersion": "[variables('apiVersionDefault')]",
+      "location": "[variables('location')]",
+      "name": "[variables('masterAvailabilitySet')]",
+      "properties": {},
+      "type": "Microsoft.Compute/availabilitySets"
+    },
+{{end}}
     {
       "apiVersion": "[variables('apiVersionStorage')]",
       "dependsOn": [
@@ -46,13 +67,6 @@
     {
       "apiVersion": "[variables('apiVersionDefault')]",
       "location": "[variables('location')]",
-      "name": "[variables('masterAvailabilitySet')]",
-      "properties": {},
-      "type": "Microsoft.Compute/availabilitySets"
-    },
-    {
-      "apiVersion": "[variables('apiVersionDefault')]",
-      "location": "[variables('location')]",
       "name": "[variables('masterPublicIPAddressName')]",
       "properties": {
         "dnsSettings": {
@@ -85,6 +99,62 @@
             }
           }
         ]
+{{if .MasterProfile.OAuthEnabled}}
+        ,"loadBalancingRules": [
+	        {
+            "name": "LBRule443",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[variables('masterLbIPConfigID')]"
+              },
+              "frontendPort": 443,
+              "backendPort": 443,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 4,
+              "protocol": "Tcp",
+              "loadDistribution": "Default",
+              "backendAddressPool": {
+                "id": "[concat(variables('masterLbID'), '/backendAddressPools/', variables('masterLbBackendPoolName'))]"
+              },
+              "probe": {
+                "id": "[concat(variables('masterLbID'),'/probes/dcosMasterProbe')]"
+              }
+            }
+          },
+          {
+            "name": "LBRule80",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[variables('masterLbIPConfigID')]"
+              },
+              "frontendPort": 80,
+              "backendPort": 80,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 4,
+              "protocol": "Tcp",
+              "loadDistribution": "Default",
+              "backendAddressPool": {
+                "id": "[concat(variables('masterLbID'), '/backendAddressPools/', variables('masterLbBackendPoolName'))]"
+              },
+              "probe": {
+                "id": "[concat(variables('masterLbID'),'/probes/dcosMasterProbe')]"
+              }
+            }
+          }
+        ],
+        "probes": [
+          {
+            "name": "dcosMasterProbe",
+            "properties": {
+              "protocol": "Http",
+              "port": 5050,
+              "requestPath": "/health",
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2
+            }
+          }
+        ]
+{{end}}
       },
       "type": "Microsoft.Network/loadBalancers"
     },
@@ -110,26 +180,91 @@
       },
       "type": "Microsoft.Network/loadBalancers/inboundNatRules"
     },
+{{if IsDCOS19}}
+    {
+      "apiVersion": "[variables('apiVersionDefault')]",
+      "dependsOn": [
+        "[variables('masterLbID')]"
+      ],
+      "location": "[resourceGroup().location]",
+
+      "name": "[concat(variables('masterLbName'), '/', 'SSHPort22-', variables('masterVMNamePrefix'), '0')]",
+      "properties": {
+        "backendPort": 2222,
+        "enableFloatingIP": false,
+        "frontendIPConfiguration": {
+          "id": "[variables('masterLbIPConfigID')]"
+        },
+        "frontendPort": "22",
+        "protocol": "tcp"
+      },
+      "type": "Microsoft.Network/loadBalancers/inboundNatRules"
+    },
+{{end}}
     {
       "apiVersion": "[variables('apiVersionDefault')]",
       "location": "[variables('location')]",
       "name": "[variables('masterNSGName')]",
       "properties": {
         "securityRules": [
-          {
-            "name": "ssh",
-            "properties": {
-              "access": "Allow",
-              "description": "Allow SSH",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "22",
-              "direction": "Inbound",
-              "priority": 200,
-              "protocol": "Tcp",
-              "sourceAddressPrefix": "*",
-              "sourcePortRange": "*"
+{{if IsDCOS19}} 
+            {
+                "properties": {
+                    "priority": 201,
+                    "access": "Allow",
+                    "direction": "Inbound",
+                    "destinationPortRange": "2222",
+                    "sourcePortRange": "*",
+                    "destinationAddressPrefix": "*",
+                    "protocol": "Tcp",
+                    "description": "Allow SSH",
+                    "sourceAddressPrefix": "*"
+                },
+                "name": "sshPort22"
+            },
+{{if .MasterProfile.OAuthEnabled}}
+            {
+                "name": "http",
+                "properties": {
+                    "protocol": "TCP",
+                    "sourcePortRange": "*",
+                    "destinationPortRange": "80",
+                    "sourceAddressPrefix": "[variables('masterHttpSourceAddressPrefix')]",
+                    "destinationAddressPrefix": "*",
+                    "access": "Allow",
+                    "priority": 202,
+                    "direction": "Inbound"
+                }
+            },
+            {
+                "name": "https",
+                "properties": {
+                    "protocol": "TCP",
+                    "sourcePortRange": "*",
+                    "destinationPortRange": "443",
+                    "sourceAddressPrefix": "[variables('masterHttpSourceAddressPrefix')]",
+                    "destinationAddressPrefix": "*",
+                    "access": "Allow",
+                    "priority": 203,
+                    "direction": "Inbound"
+                }
+            },
+{{end}}
+{{end}}
+            {
+                "properties": {
+                    "priority": 200,
+                    "access": "Allow",
+                    "direction": "Inbound",
+                    "destinationPortRange": "22",
+                    "sourcePortRange": "*",
+                    "destinationAddressPrefix": "*",
+                    "protocol": "Tcp",
+                    "description": "Allow SSH",
+                    "sourceAddressPrefix": "*"
+                },
+                "name": "ssh"
             }
-          }
         ]
       },
       "type": "Microsoft.Network/networkSecurityGroups"
@@ -146,6 +281,9 @@
         "[variables('vnetID')]",
 {{end}}
         "[variables('masterLbID')]",
+{{if IsDCOS19}}
+        "[concat(variables('masterLbID'),'/inboundNatRules/SSHPort22-',variables('masterVMNamePrefix'),0)]",
+{{end}}
         "[concat(variables('masterLbID'),'/inboundNatRules/SSH-',variables('masterVMNamePrefix'),copyIndex())]"
       ],
       "location": "[variables('location')]",
@@ -160,11 +298,15 @@
                   "id": "[concat(variables('masterLbID'), '/backendAddressPools/', variables('masterLbBackendPoolName'))]"
                 }
               ],
+{{if IsDCOS19}}
+              "loadBalancerInboundNatRules": "[variables('masterLbInboundNatRules')[copyIndex()]]",
+{{else}}
               "loadBalancerInboundNatRules": [
                 {
                   "id": "[concat(variables('masterLbID'),'/inboundNatRules/SSH-',variables('masterVMNamePrefix'),copyIndex())]"
                 }
               ],
+{{end}}
               "privateIPAddress": "[concat(variables('masterFirstAddrPrefix'), copyIndex(int(variables('masterFirstAddrOctet4'))))]",
               "privateIPAllocationMethod": "Static",
               "subnet": {
@@ -180,7 +322,11 @@
       "type": "Microsoft.Network/networkInterfaces"
     },
     {
+{{if .MasterProfile.IsManagedDisks}}
+      "apiVersion": "[variables('apiVersionStorageManagedDisks')]",
+{{else}}
       "apiVersion": "[variables('apiVersionDefault')]",
+{{end}}
       "copy": {
         "count": "[variables('masterCount')]",
         "name": "vmLoopNode"
@@ -188,7 +334,9 @@
       "dependsOn": [
         "[concat('Microsoft.Network/networkInterfaces/', variables('masterVMNamePrefix'), 'nic-', copyIndex())]",
         "[concat('Microsoft.Compute/availabilitySets/',variables('masterAvailabilitySet'))]",
+{{if .MasterProfile.IsStorageAccount}}
         "[variables('masterStorageAccountName')]",
+{{end}}
         "[variables('masterStorageAccountExhibitorName')]"
       ],
       "tags":
@@ -239,12 +387,17 @@
             "version": "[variables('osImageVersion')]"
           },
           "osDisk": {
-            "caching": "ReadWrite",
-            "createOption": "FromImage",
-            "name": "[concat(variables('masterVMNamePrefix'), copyIndex(),'-osdisk')]",
-            "vhd": {
+            "caching": "ReadWrite"
+            ,"createOption": "FromImage"
+{{if .MasterProfile.IsStorageAccount}}
+            ,"name": "[concat(variables('masterVMNamePrefix'), copyIndex(),'-osdisk')]"
+            ,"vhd": {
               "uri": "[concat(reference(concat('Microsoft.Storage/storageAccounts/',variables('masterStorageAccountName')),variables('apiVersionStorage')).primaryEndpoints.blob,'vhds/',variables('masterVMNamePrefix'),copyIndex(),'-osdisk.vhd')]"
             }
+{{end}}
+{{if ne .MasterProfile.OSDiskSizeGB 0}}
+            ,"diskSizeGB": {{.MasterProfile.OSDiskSizeGB}}
+{{end}}
           }
         }
       },

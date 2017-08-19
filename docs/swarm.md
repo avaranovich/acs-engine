@@ -8,7 +8,7 @@ Here are the steps to deploy a simple Swarm cluster:
 2. [generate your ssh key](ssh.md#ssh-key-generation)
 3. edit the [Swarm example](../examples/swarm.json) and fill in the blank strings
 4. [generate the template](acsengine.md#generating-a-template)
-5. [deploy the output azuredeploy.json and azuredeploy.parameters.json](../README.md#deployment-usage)
+5. [deploy the output azuredeploy.json and azuredeploy.parameters.json](../acsengine.md#deployment-usage)
 
 ## Walkthrough
 
@@ -33,15 +33,15 @@ After completing this walkthrough you will know how to:
 
 
  1. After successfully deploying the template write down the two output master and agent FQDNs (Fully Qualified Domain Name).
-  1. If using Powershell or CLI, the output parameters are the last values printed.
-  2. If using Portal, to get the output you need to:
-    1. navigate to "resource group"
-    2. click on the resource group you just created
-    3. then click on "Succeeded" under *last deployment*
-    4. then click on the "Microsoft.Template"
-    5. now you can copy the output FQDNs and sample SSH commands
-
-    ![Image of docker scaling](images/findingoutputs.png)
+    1. If using Powershell or CLI, the output parameters are the last values printed.
+    2. If using Portal, to get the output you need to:
+        1. navigate to "resource group"
+        2. click on the resource group you just created
+        3. then click on "Succeeded" under *last deployment*
+        4. then click on the "Microsoft.Template"
+        5. now you can copy the output FQDNs and sample SSH commands
+        
+        ![Image of docker scaling](images/findingoutputs.png)
 
  2. SSH to port 2200 of the master FQDN. See [agent forwarding](ssh.md#key-management-and-agent-forwarding-with-windows-pageant) for an example of how to do this.
 
@@ -70,7 +70,7 @@ After completing this walkthrough you will know how to:
 
  ![Image of the web page](images/swarmbrowser.png)
 
- 10. You can now scale the web application.  For example, if you have 3 agents, you can type `docker-compose scale web=**3**`, and this will scale to the rest of your agents.  Note that in this example you can only scale up to the number of agents that you have since each container requires port 80, so if you deployed a single agent, you won't be able to scale up.  The Azure load balancer will automatically pick up the new containers.
+ 10. You can now scale the web application.  For example, if you have 3 agents, you can type `docker-compose scale web=3`, and this will scale to the rest of your agents.  Note that in this example you can only scale up to the number of agents that you have since each container requires port 80, so if you deployed a single agent, you won't be able to scale up.  The Azure load balancer will automatically pick up the new containers.
 
  ![Image of docker scaling](images/dockercomposescale.png)
 

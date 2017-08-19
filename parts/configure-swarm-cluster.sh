@@ -6,18 +6,18 @@ echo "starting swarm cluster configuration"
 date
 ps ax
 
-SWARM_VERSION="swarm:1.1.0"
-DOCKER_COMPOSE_VERSION="1.6.2"
 #############
 # Parameters
 #############
 
-MASTERCOUNT=${1}
-MASTERPREFIX=${2}
-MASTERFIRSTADDR=${3}
-AZUREUSER=${4}
-POSTINSTALLSCRIPTURI=${5}
-BASESUBNET=${6}
+SWARM_VERSION=${1}
+DOCKER_COMPOSE_VERSION=${2}
+MASTERCOUNT=${3}
+MASTERPREFIX=${4}
+MASTERFIRSTADDR=${5}
+AZUREUSER=${6}
+POSTINSTALLSCRIPTURI=${7}
+BASESUBNET=${8}
 VMNAME=`hostname`
 VMNUMBER=`echo $VMNAME | sed 's/.*[^0-9]\([0-9]\+\)*$/\1/'`
 VMPREFIX=`echo $VMNAME | sed 's/\(.*[^0-9]\)*[0-9]\+$/\1/'`
@@ -36,25 +36,6 @@ echo "AZUREUSER: $AZUREUSER"
 
 ensureAzureNetwork()
 {
-  # ensure the host name is resolvable
-  hostResolveHealthy=1
-  for i in {1..120}; do
-    host $VMNAME
-    if [ $? -eq 0 ]
-    then
-      # hostname has been found continue
-      hostResolveHealthy=0
-      echo "the host name resolves"
-      break
-    fi
-    sleep 1
-  done
-  if [ $hostResolveHealthy -ne 0 ]
-  then
-    echo "host name does not resolve, aborting install"
-    exit 1
-  fi
-
   # ensure the network works
   networkHealthy=1
   for i in {1..12}; do
@@ -73,7 +54,7 @@ ensureAzureNetwork()
     echo "the network is not healthy, aborting install"
     ifconfig
     ip a
-    exit 2
+    exit 1
   fi
   # ensure the host ip can resolve
   networkHealthy=1
@@ -88,6 +69,20 @@ ensureAzureNetwork()
     fi
     sleep 1
   done
+  # attempt to fix hostname, in case dns is not resolving Azure IPs (but can resolve public ips)
+  if [ $networkHealthy -ne 0 ]
+  then
+    HOSTNAME=`hostname`
+    HOSTADDR=`ip address show dev eth0 | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*'`
+    echo $HOSTADDR $HOSTNAME >> /etc/hosts
+    hostname -i
+    if [ $? -eq 0 ]
+    then
+      # hostname has been found continue
+      networkHealthy=0
+      echo "the network is healthy by updating /etc/hosts"
+    fi
+  fi
   if [ $networkHealthy -ne 0 ]
   then
     echo "the network is not healthy, cannot resolve ip address, aborting install"
@@ -98,6 +93,9 @@ ensureAzureNetwork()
 }
 ensureAzureNetwork
 HOSTADDR=`hostname -i`
+
+# apply all Canonical security updates during provisioning
+/usr/lib/apt/apt.systemd.daily
 
 ismaster ()
 {

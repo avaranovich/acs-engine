@@ -11,6 +11,10 @@
 
 上面的这段脚本在Docker容器中挂载了`acs-engine`源目录。你可以在任何熟悉的编辑器上修改这些源代码，所做的修改可以直接在Docker容器中编译和测试（本项目的持续集成系统中也采用了同样的方式）。
 
+```
+make bootstrap
+```
+
 当`devenv.{ps1,sh}`执行完毕的时候，你可以在容器中查看对应的日志，最后执行下面的脚本就可以生成`acs-engine`工具了：
 
 ```
@@ -20,20 +24,22 @@ make build
 当项目编译通过后，可以使用如下的命令来验证`acs-engine`是否正常运行：
 
 ```
-# acs-engine
-Usage of acs-engine:
-  -artifacts string
-    	directory where artifacts will be written
-  -caCertificatePath string
-    	the path to the CA Certificate file
-  -caKeyPath string
-    	the path to the CA key file
-  -classicMode
-    	enable classic parameters and outputs
-  -noPrettyPrint
-    	do not pretty print output
-  -parametersOnly
-    	only output the parameters
+# ./bin/acs-engine 
+ACS-Engine deploys and manages Kubernetes, Swarm Mode, and DC/OS clusters in Azure
+
+Usage:
+  acs-engine [command]
+
+Available Commands:
+  generate    Generate an Azure Resource Manager template
+  help        Help about any command
+  version     Print the version of ACS-Engine
+
+Flags:
+      --debug   enable verbose debug logs
+  -h, --help    help for acs-engine
+
+Use "acs-engine [command] --help" for more information about a command.
 ```
 
 [详细的开发，编译，测试过程和步骤可以参考这个视频](https://www.youtube.com/watch?v=lc6UZmqxQMs)
@@ -132,9 +138,9 @@ ACS引擎使用json格式的[集群定义文件](clusterdefinition.md)作为输�
 
 1. 首先需要准备一个[SSH 公钥私钥对](ssh.md#ssh-key-generation).
 2. 编辑[examples/kubernetes.json](../examples/kubernetes.json)将其需要的参数配置好.
-3. 运行`acs-engine examples/kubernetes.json`命令在_output/Kubernetes-UNIQUEID目录中生成对应的模板。（UNIQUEID是master节点的FQDN前缀的hash值）
-4. 按照README中指定的方式使用`azuredeploy.json`和`azuredeploy.parameters.json`部署容器集群 [deployment usage](../README.md#deployment-usage).
+3. 运行`./bin/acs-engine generate examples/kubernetes.json`命令在_output/Kubernetes-UNIQUEID目录中生成对应的模板。（UNIQUEID是master节点的FQDN前缀的hash值）
+4. 按照README中指定的方式使用`azuredeploy.json`和`azuredeploy.parameters.json`部署容器集群 [deployment usage](../acsengine.md#deployment-usage).
 
 # 部署方法
 
-[部署方式请参考这里](../README.md#deployment-usage).
+[部署方式请参考这里](../acsengine.md#deployment-usage).

@@ -22,7 +22,7 @@ function generate_template() {
 	[[ ! -z "${SERVICE_PRINCIPAL_CLIENT_ID:-}" ]] || [[ ! -z "${CLUSTER_SERVICE_PRINCIPAL_CLIENT_ID:-}" ]] || (echo "Must specify SERVICE_PRINCIPAL_CLIENT_ID" && exit -1)
 	[[ ! -z "${SERVICE_PRINCIPAL_CLIENT_SECRET:-}" ]] || [[ ! -z "${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET:-}" ]] || (echo "Must specify SERVICE_PRINCIPAL_CLIENT_SECRET" && exit -1)
 	[[ ! -z "${OUTPUT:-}" ]] || (echo "Must specify OUTPUT" && exit -1)
-	
+
 	# Set output directory
 	mkdir -p "${OUTPUT}"
 
@@ -44,8 +44,22 @@ function generate_template() {
 
 	k8sServicePrincipal=$(jq 'getpath(["properties","servicePrincipalProfile"])' ${FINAL_CLUSTER_DEFINITION})
 	if [[ "${k8sServicePrincipal}" != "null" ]]; then
-		jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.servicePrincipalClientID = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_ID}\""
-		jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.servicePrincipalClientSecret = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET}\""
+		apiVersion=$(get_api_version)
+		if [[ "$apiVersion" == "vlabs" ]]; then
+			jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.servicePrincipalClientID = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_ID}\""
+			if [[ ${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET} =~ /subscription.* ]]; then
+				jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.servicePrincipalClientKeyvaultSecretRef  = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET}\""
+			else
+				jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.servicePrincipalClientSecret  = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET}\""
+			fi
+		else
+			jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.clientId = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_ID}\""
+			if [[ ${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET} =~ /subscription.* ]]; then
+				jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.keyvaultSecretRef = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET}\""
+			else
+				jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.servicePrincipalProfile.secret = \"${CLUSTER_SERVICE_PRINCIPAL_CLIENT_SECRET}\""
+			fi
+		fi
 	fi
 
 	secrets=$(jq 'getpath(["properties","linuxProfile","secrets"])' ${FINAL_CLUSTER_DEFINITION})
@@ -64,12 +78,12 @@ function generate_template() {
 		jqi "${FINAL_CLUSTER_DEFINITION}" ".properties.windowsProfile.secrets[0].vaultCertificates[0].certificateStore = \"My\""
 	fi
 	# Generate template
-	"${DIR}/../acs-engine" -artifacts "${OUTPUT}" "${FINAL_CLUSTER_DEFINITION}"
+	"${DIR}/../bin/acs-engine" generate --output-directory "${OUTPUT}" "${FINAL_CLUSTER_DEFINITION}" --debug
 
 	# Fill in custom hyperkube spec, if it was set
 	if [[ ! -z "${CUSTOM_HYPERKUBE_SPEC:-}" ]]; then
 		# TODO: plumb hyperkube into the apimodel
-		jqi "${OUTPUT}/azuredeploy.parameters.json" ".kubernetesHyperkubeSpec.value = \"${CUSTOM_HYPERKUBE_SPEC}\""
+		jqi "${OUTPUT}/azuredeploy.parameters.json" ".parameters.kubernetesHyperkubeSpec.value = \"${CUSTOM_HYPERKUBE_SPEC}\""
 	fi
 }
 
@@ -82,10 +96,6 @@ function set_azure_account() {
 	which kubectl || (echo "kubectl must be on PATH" && exit -1)
 	which az || (echo "az must be on PATH" && exit -1)
 
-	# Set custom dir so we don't clobber global 'az' config
-	AZURE_CONFIG_DIR="$(mktemp -d)"
-	trap 'rm -rf ${AZURE_CONFIG_DIR}' EXIT
-
 	# Login to Azure-Cli
 	az login --service-principal \
 		--username "${SERVICE_PRINCIPAL_CLIENT_ID}" \
@@ -93,6 +103,18 @@ function set_azure_account() {
 		--tenant "${TENANT_ID}" &>/dev/null
 
 	az account set --subscription "${SUBSCRIPTION_ID}"
+}
+
+function create_resource_group() {
+	[[ ! -z "${LOCATION:-}" ]] || (echo "Must specify LOCATION" && exit -1)
+	[[ ! -z "${RESOURCE_GROUP:-}" ]] || (echo "Must specify RESOURCE_GROUP" && exit -1)
+
+	# Create resource group if doesn't exist
+	rg=$(az group show --name="${RESOURCE_GROUP}")
+	if [ -z "$rg" ]; then
+		az group create --name="${RESOURCE_GROUP}" --location="${LOCATION}" --tags "type=${RESOURCE_GROUP_TAG_TYPE:-}" "now=$(date +%s)" "job=${JOB_BASE_NAME:-}" "buildno=${BUILD_NUM:-}"
+		sleep 3 # TODO: investigate why this is needed (eventual consistency in ARM)
+	fi
 }
 
 function deploy_template() {
@@ -105,15 +127,96 @@ function deploy_template() {
 	which kubectl || (echo "kubectl must be on PATH" && exit -1)
 	which az || (echo "az must be on PATH" && exit -1)
 
-	# Deploy the template
-	az group create --name="${RESOURCE_GROUP}" --location="${LOCATION}"
+	create_resource_group
 
-	sleep 3 # TODO: investigate why this is needed (eventual consistency in ARM)
+	# Deploy the template
 	az group deployment create \
 		--name "${DEPLOYMENT_NAME}" \
 		--resource-group "${RESOURCE_GROUP}" \
 		--template-file "${OUTPUT}/azuredeploy.json" \
 		--parameters "@${OUTPUT}/azuredeploy.parameters.json"
+}
+
+function scale_agent_pool() {
+	# Check pre-requisites
+	[[ ! -z "${AGENT_POOL_SIZE:-}" ]] || (echo "Must specify AGENT_POOL_SIZE" && exit -1)
+	[[ ! -z "${DEPLOYMENT_NAME:-}" ]] || (echo "Must specify DEPLOYMENT_NAME" && exit -1)
+	[[ ! -z "${LOCATION:-}" ]] || (echo "Must specify LOCATION" && exit -1)
+	[[ ! -z "${RESOURCE_GROUP:-}" ]] || (echo "Must specify RESOURCE_GROUP" && exit -1)
+	[[ ! -z "${OUTPUT:-}" ]] || (echo "Must specify OUTPUT" && exit -1)
+
+	which az || (echo "az must be on PATH" && exit -1)
+
+	APIMODEL="${OUTPUT}/apimodel.json"
+	DEPLOYMENT_PARAMS="${OUTPUT}/azuredeploy.parameters.json"
+
+	for poolname in `jq '.properties.agentPoolProfiles[].name' "${APIMODEL}" | tr -d '\"'`; do
+	  offset=$(jq "getpath([\"parameters\", \"${poolname}Count\", \"value\"])" ${DEPLOYMENT_PARAMS})
+	  echo "$poolname : offset=$offset count=$AGENT_POOL_SIZE"
+	  jqi "${DEPLOYMENT_PARAMS}" ".${poolname}Count.value = $AGENT_POOL_SIZE"
+	  jqi "${DEPLOYMENT_PARAMS}" ".${poolname}Offset.value = $offset"
+	done
+
+	az group deployment create \
+		--name "${DEPLOYMENT_NAME}" \
+		--resource-group "${RESOURCE_GROUP}" \
+		--template-file "${OUTPUT}/azuredeploy.json" \
+		--parameters "@${OUTPUT}/azuredeploy.parameters.json"
+}
+
+function get_node_count() {
+	[[ ! -z "${CLUSTER_DEFINITION:-}" ]] || (echo "Must specify CLUSTER_DEFINITION" && exit -1)
+
+	count=$(jq '.properties.masterProfile.count' ${CLUSTER_DEFINITION})
+	linux_agents=0
+	windows_agents=0
+
+	nodes=$(jq -r '.properties.agentPoolProfiles[].count' ${CLUSTER_DEFINITION})
+	osTypes=$(jq -r '.properties.agentPoolProfiles[].osType' ${CLUSTER_DEFINITION})
+
+	nArr=( $nodes )
+	oArr=( $osTypes )
+	indx=0
+	for n in "${nArr[@]}"; do
+		count=$((count+n))
+		if [ "${oArr[$indx]}" = "Windows" ]; then
+			windows_agents=$((windows_agents+n))
+		else
+			linux_agents=$((linux_agents+n))
+		fi
+		indx=$((indx+1))
+	done
+	echo "${count}:${linux_agents}:${windows_agents}"
+}
+
+function get_orchestrator_type() {
+	[[ ! -z "${CLUSTER_DEFINITION:-}" ]] || (echo "Must specify CLUSTER_DEFINITION" && exit -1)
+
+	orchestratorType=$(jq -r 'getpath(["properties","orchestratorProfile","orchestratorType"])' ${CLUSTER_DEFINITION} | tr '[:upper:]' '[:lower:]')
+
+	echo $orchestratorType
+}
+
+function get_orchestrator_release() {
+	[[ ! -z "${CLUSTER_DEFINITION:-}" ]] || (echo "Must specify CLUSTER_DEFINITION" && exit -1)
+
+	orchestratorRelease=$(jq -r 'getpath(["properties","orchestratorProfile","orchestratorRelease"])' ${CLUSTER_DEFINITION})
+	if [[ "$orchestratorRelease" == "null" ]]; then
+		orchestratorRelease=""
+	fi
+
+	echo $orchestratorRelease
+}
+
+function get_api_version() {
+	[[ ! -z "${CLUSTER_DEFINITION:-}" ]] || (echo "Must specify CLUSTER_DEFINITION" && exit -1)
+
+	apiVersion=$(jq -r 'getpath(["apiVersion"])' ${CLUSTER_DEFINITION})
+	if [[ "$apiVersion" == "null" ]]; then
+		apiVersion=""
+	fi
+
+	echo $apiVersion
 }
 
 function cleanup() {

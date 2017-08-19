@@ -21,9 +21,7 @@
         {{end}}
     {{end}}
 
-    {{template "swarmmastervars.t" .}},
-    
-    {{GetSizeMap}}
+    {{template "swarmmastervars.t" .}}
   },
   "resources": [
     {{range .AgentPoolProfiles}}
@@ -36,8 +34,6 @@
       {{else}}
         {{if .IsAvailabilitySets}}
           {{template "swarmagentresourcesvmas.t" .}},
-        {{else if .IsClassicStorageAccount}}
-          {{template "swarmagentresourcesclassic.t" .}},
         {{else}}
           {{template "swarmagentresourcesvmss.t" .}},
         {{end}}
@@ -47,6 +43,7 @@
   ],
   "outputs": {
     {{range .AgentPoolProfiles}}{{template "agentoutputs.t" .}}
-    {{end}}{{template "masteroutputs.t" .}}
+    {{end}}
+    {{template "masteroutputs.t" .}}
   }
 }

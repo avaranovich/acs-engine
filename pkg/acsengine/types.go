@@ -4,6 +4,7 @@ import (
 	"github.com/Azure/acs-engine/pkg/api"
 	"github.com/Azure/acs-engine/pkg/api/v20160330"
 	"github.com/Azure/acs-engine/pkg/api/vlabs"
+	"github.com/Azure/acs-engine/pkg/i18n"
 )
 
 // DCOSNodeType represents the type of DCOS Node
@@ -32,15 +33,17 @@ type DockerSpecConfig struct {
 
 //DCOSSpecConfig is the configurations of DCOS
 type DCOSSpecConfig struct {
-	DCOS173_BootstrapDownloadURL string
-	DCOS184_BootstrapDownloadURL string
-	DCOS187_BootstrapDownloadURL string
-	DCOS188_BootstrapDownloadURL string
+	DCOS173BootstrapDownloadURL     string
+	DCOS188BootstrapDownloadURL     string
+	DCOS190BootstrapDownloadURL     string
+	DCOSWindowsBootstrapDownloadURL string
 }
 
 //KubernetesSpecConfig is the kubernetes container images used.
 type KubernetesSpecConfig struct {
-	KubernetesImageBase string
+	KubernetesImageBase    string
+	TillerImageBase        string
+	KubeBinariesSASURLBase string
 }
 
 //AzureEnvironmentSpecConfig is the overall configuration differences in different cloud environments.
@@ -48,4 +51,9 @@ type AzureEnvironmentSpecConfig struct {
 	DockerSpecConfig     DockerSpecConfig
 	KubernetesSpecConfig KubernetesSpecConfig
 	DCOSSpecConfig       DCOSSpecConfig
+}
+
+// Context represents the object that is passed to the package
+type Context struct {
+	Translator *i18n.Translator
 }
