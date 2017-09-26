@@ -6,20 +6,22 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Azure/acs-engine/pkg/api/common"
+	"github.com/satori/uuid"
 	validator "gopkg.in/go-playground/validator.v9"
 )
 
 var (
-	validate                *validator.Validate
-	keyvaultSecretPathRegex *regexp.Regexp
+	validate        *validator.Validate
+	keyvaultIDRegex *regexp.Regexp
 )
 
 func init() {
 	validate = validator.New()
-	keyvaultSecretPathRegex = regexp.MustCompile(`^(/subscriptions/\S+/resourceGroups/\S+/providers/Microsoft.KeyVault/vaults/\S+)/secrets/([^/\s]+)(/(\S+))?$`)
+	keyvaultIDRegex = regexp.MustCompile(`^/subscriptions/\S+/resourceGroups/\S+/providers/Microsoft.KeyVault/vaults/[^/\s]+$`)
 }
 
 // Validate implements APIObject
@@ -29,9 +31,9 @@ func (o *OrchestratorProfile) Validate() error {
 	switch o.OrchestratorType {
 	case DCOS:
 		switch o.OrchestratorRelease {
-		case common.DCOSRelease1Dot7:
 		case common.DCOSRelease1Dot8:
 		case common.DCOSRelease1Dot9:
+		case common.DCOSRelease1Dot10:
 		case "":
 		default:
 			return fmt.Errorf("OrchestratorProfile has unknown orchestrator release: %s", o.OrchestratorRelease)
@@ -55,6 +57,16 @@ func (o *OrchestratorProfile) Validate() error {
 			if err != nil {
 				return err
 			}
+			if o.KubernetesConfig.EnableAggregatedAPIs {
+				if o.OrchestratorRelease != common.KubernetesRelease1Dot7 {
+					return fmt.Errorf("enableAggregatedAPIs is only available in Kubernetes version %s; unable to validate for Kubernetes version %s",
+						common.KubernetesRelease1Dot7, o.OrchestratorRelease)
+				}
+
+				if !o.KubernetesConfig.EnableRbac {
+					return fmt.Errorf("enableAggregatedAPIs requires the enableRbac feature as a prerequisite")
+				}
+			}
 		}
 
 	default:
@@ -65,6 +77,9 @@ func (o *OrchestratorProfile) Validate() error {
 		return fmt.Errorf("KubernetesConfig can be specified only when OrchestratorType is Kubernetes")
 	}
 
+	if o.OrchestratorType != DCOS && o.DcosConfig != nil && (*o.DcosConfig != DcosConfig{}) {
+		return fmt.Errorf("DcosConfig can be specified only when OrchestratorType is DCOS")
+	}
 	return nil
 }
 
@@ -128,6 +143,45 @@ func (a *AgentPoolProfile) Validate(orchestratorType string) error {
 	return nil
 }
 
+// Validate implements APIObject
+func (o *OrchestratorVersionProfile) Validate() error {
+	switch {
+	case strings.EqualFold(o.OrchestratorType, Kubernetes):
+		o.OrchestratorType = Kubernetes
+		if _, ok := common.KubeReleaseToVersion[o.OrchestratorRelease]; !ok {
+			return fmt.Errorf("Unsupported Kubernetes release '%s'", o.OrchestratorRelease)
+		}
+	case strings.EqualFold(o.OrchestratorType, DCOS):
+		o.OrchestratorType = DCOS
+		if _, ok := common.DCOSReleaseToVersion[o.OrchestratorRelease]; !ok {
+			return fmt.Errorf("Unsupported DCOS release '%s'", o.OrchestratorRelease)
+		}
+	case strings.EqualFold(o.OrchestratorType, Swarm):
+		o.OrchestratorType = Swarm
+	case strings.EqualFold(o.OrchestratorType, SwarmMode):
+		o.OrchestratorType = SwarmMode
+	default:
+		return fmt.Errorf("Unsupported orchestrator '%s'", o.OrchestratorType)
+	}
+	return nil
+}
+
+// ValidateForUpgrade validates upgrade input data
+func (o *OrchestratorProfile) ValidateForUpgrade() error {
+	switch o.OrchestratorType {
+	case DCOS, SwarmMode, Swarm:
+		return fmt.Errorf("Upgrade is not supported for orchestrator %s", o.OrchestratorType)
+	case Kubernetes:
+		switch o.OrchestratorRelease {
+		case common.KubernetesRelease1Dot6:
+		case common.KubernetesRelease1Dot7:
+		default:
+			return fmt.Errorf("Upgrade to Kubernetes %s is not supported", o.OrchestratorRelease)
+		}
+	}
+	return nil
+}
+
 func validateKeyVaultSecrets(secrets []KeyVaultSecrets, requireCertificateStore bool) error {
 	for _, s := range secrets {
 		if len(s.VaultCertificates) == 0 {
@@ -172,6 +226,22 @@ func handleValidationErrors(e validator.ValidationErrors) error {
 }
 
 // Validate implements APIObject
+func (profile *AADProfile) Validate() error {
+	if _, err := uuid.FromString(profile.ClientAppID); err != nil {
+		return fmt.Errorf("clientAppID '%v' is invalid", profile.ClientAppID)
+	}
+	if _, err := uuid.FromString(profile.ServerAppID); err != nil {
+		return fmt.Errorf("serverAppID '%v' is invalid", profile.ServerAppID)
+	}
+	if len(profile.TenantID) > 0 {
+		if _, err := uuid.FromString(profile.TenantID); err != nil {
+			return fmt.Errorf("tenantID '%v' is invalid", profile.TenantID)
+		}
+	}
+	return nil
+}
+
+// Validate implements APIObject
 func (a *Properties) Validate() error {
 	if e := validate.Struct(a); e != nil {
 		return handleValidationErrors(e.(validator.ValidationErrors))
@@ -194,17 +264,25 @@ func (a *Properties) Validate() error {
 			a.OrchestratorProfile.KubernetesConfig.UseManagedIdentity)
 
 		if !useManagedIdentity {
+			if a.ServicePrincipalProfile == nil {
+				return fmt.Errorf("ServicePrincipalProfile must be specified with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
+			}
 			if e := validate.Var(a.ServicePrincipalProfile.ClientID, "required"); e != nil {
 				return fmt.Errorf("the service principal client ID must be specified with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
 			}
-			if (len(a.ServicePrincipalProfile.Secret) == 0 && len(a.ServicePrincipalProfile.KeyvaultSecretRef) == 0) ||
-				(len(a.ServicePrincipalProfile.Secret) != 0 && len(a.ServicePrincipalProfile.KeyvaultSecretRef) != 0) {
+			if (len(a.ServicePrincipalProfile.Secret) == 0 && a.ServicePrincipalProfile.KeyvaultSecretRef == nil) ||
+				(len(a.ServicePrincipalProfile.Secret) != 0 && a.ServicePrincipalProfile.KeyvaultSecretRef != nil) {
 				return fmt.Errorf("either the service principal client secret or keyvault secret reference must be specified with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
 			}
 
-			if len(a.ServicePrincipalProfile.KeyvaultSecretRef) != 0 {
-				parts := keyvaultSecretPathRegex.FindStringSubmatch(a.ServicePrincipalProfile.KeyvaultSecretRef)
-				if len(parts) != 5 {
+			if a.ServicePrincipalProfile.KeyvaultSecretRef != nil {
+				if e := validate.Var(a.ServicePrincipalProfile.KeyvaultSecretRef.VaultID, "required"); e != nil {
+					return fmt.Errorf("the Keyvault ID must be specified for the Service Principle with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
+				}
+				if e := validate.Var(a.ServicePrincipalProfile.KeyvaultSecretRef.SecretName, "required"); e != nil {
+					return fmt.Errorf("the Keyvault Secret must be specified for the Service Principle with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
+				}
+				if !keyvaultIDRegex.MatchString(a.ServicePrincipalProfile.KeyvaultSecretRef.VaultID) {
 					return fmt.Errorf("service principal client keyvault secret reference is of incorrect format")
 				}
 			}
@@ -277,6 +355,30 @@ func (a *Properties) Validate() error {
 	if e := validateVNET(a); e != nil {
 		return e
 	}
+
+	if a.AADProfile != nil {
+		if a.OrchestratorProfile.OrchestratorType != Kubernetes {
+			return fmt.Errorf("'aadProfile' is only supported by orchestrator '%v'", Kubernetes)
+		}
+		if e := a.AADProfile.Validate(); e != nil {
+			return e
+		}
+	}
+
+	for _, extension := range a.ExtensionProfiles {
+		if extension.ExtensionParametersKeyVaultRef != nil {
+			if e := validate.Var(extension.ExtensionParametersKeyVaultRef.VaultID, "required"); e != nil {
+				return fmt.Errorf("the Keyvault ID must be specified for Extension %s", extension.Name)
+			}
+			if e := validate.Var(extension.ExtensionParametersKeyVaultRef.SecretName, "required"); e != nil {
+				return fmt.Errorf("the Keyvault Secret must be specified for Extension %s", extension.Name)
+			}
+			if !keyvaultIDRegex.MatchString(extension.ExtensionParametersKeyVaultRef.VaultID) {
+				return fmt.Errorf("Extension %s's keyvault secret reference is of incorrect format", extension.Name)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -308,6 +410,12 @@ func (a *KubernetesConfig) Validate(k8sRelease string) error {
 		_, _, err := net.ParseCIDR(a.DockerBridgeSubnet)
 		if err != nil {
 			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.DockerBridgeSubnet '%s' is an invalid subnet", a.DockerBridgeSubnet)
+		}
+	}
+
+	if a.MaxPods != 0 {
+		if a.MaxPods < KubernetesMinMaxPods {
+			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.MaxPods '%v' must be at least %v", a.MaxPods, KubernetesMinMaxPods)
 		}
 	}
 
@@ -363,6 +471,42 @@ func (a *KubernetesConfig) Validate(k8sRelease string) error {
 	if a.CloudProviderRateLimit {
 		if !ratelimitEnabledReleases[k8sRelease] {
 			return fmt.Errorf("cloudprovider rate limiting functionality not available in kubernetes release %s", k8sRelease)
+		}
+	}
+
+	if a.DNSServiceIP != "" || a.ServiceCidr != "" {
+		if a.DNSServiceIP == "" {
+			return errors.New("OrchestratorProfile.KubernetesConfig.ServiceCidr must be specified when DNSServiceIP is")
+		}
+		if a.ServiceCidr == "" {
+			return errors.New("OrchestratorProfile.KubernetesConfig.DNSServiceIP must be specified when ServiceCidr is")
+		}
+
+		dnsIP := net.ParseIP(a.DNSServiceIP)
+		if dnsIP == nil {
+			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.DNSServiceIP '%s' is an invalid IP address", a.DNSServiceIP)
+		}
+
+		_, serviceCidr, err := net.ParseCIDR(a.ServiceCidr)
+		if err != nil {
+			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.ServiceCidr '%s' is an invalid CIDR subnet", a.ServiceCidr)
+		}
+
+		// Finally validate that the DNS ip is within the subnet
+		if !serviceCidr.Contains(dnsIP) {
+			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.DNSServiceIP '%s' is not within the ServiceCidr '%s'", a.DNSServiceIP, a.ServiceCidr)
+		}
+
+		// and that the DNS IP is _not_ the subnet broadcast address
+		broadcast := common.IP4BroadcastAddress(serviceCidr)
+		if dnsIP.Equal(broadcast) {
+			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.DNSServiceIP '%s' cannot be the broadcast address of ServiceCidr '%s'", a.DNSServiceIP, a.ServiceCidr)
+		}
+
+		// and that the DNS IP is _not_ the first IP in the service subnet
+		firstServiceIP := common.CidrFirstIP(serviceCidr.IP)
+		if firstServiceIP.Equal(dnsIP) {
+			return fmt.Errorf("OrchestratorProfile.KubernetesConfig.DNSServiceIP '%s' cannot be the first IP of ServiceCidr '%s'", a.DNSServiceIP, a.ServiceCidr)
 		}
 	}
 
@@ -484,6 +628,13 @@ func validateVNET(a *Properties) error {
 		masterFirstIP := net.ParseIP(a.MasterProfile.FirstConsecutiveStaticIP)
 		if masterFirstIP == nil {
 			return fmt.Errorf("MasterProfile.FirstConsecutiveStaticIP (with VNET Subnet specification) '%s' is an invalid IP address", a.MasterProfile.FirstConsecutiveStaticIP)
+		}
+
+		if a.MasterProfile.VnetCidr != "" {
+			_, _, err := net.ParseCIDR(a.MasterProfile.VnetCidr)
+			if err != nil {
+				return fmt.Errorf("MasterProfile.VnetCidr '%s' contains invalid cidr notation", a.MasterProfile.VnetCidr)
+			}
 		}
 	}
 	return nil

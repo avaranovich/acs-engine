@@ -24,3 +24,6 @@ test/acs-engine-test/report/TestReport.json
 *.swp
 
 definitions/
+=======
+# I have no idea why these get generated when I run the e2e test
+test/e2e/kubernetes/translations/

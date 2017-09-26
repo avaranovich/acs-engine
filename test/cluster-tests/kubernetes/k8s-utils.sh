@@ -128,11 +128,14 @@ function test_windows_deployment() {
     exit 1
   fi
 
+  # TODO: There is an issue Windows POD has delay to talk to DNS, but not to other services
+  sleep 300
+
   count=10
   success="n"
   while (( $count > 0 )); do
     log "  ... counting down $count"
-    statuscode=$(kubectl exec $winpodname -- powershell iwr -UseBasicParsing www.bing.com | grep StatusCode)
+    statuscode=$(kubectl exec $winpodname -- powershell iwr -UseBasicParsing -TimeoutSec 60 www.bing.com | grep StatusCode)
     if [[ $(echo ${statuscode} | grep 200 | awk '{print $3}' | tr -d '\r') -eq "200" ]]; then 
       success="y"
       break 
@@ -140,6 +143,15 @@ function test_windows_deployment() {
     sleep 10; count=$((count-1))
   done
   if [[ "${success}" != "y" ]]; then
+    nslookup=$(kubectl exec $winpodname -- powershell nslookup www.bing.com)
+    log "$nslookup"
+    ipconfig=$(kubectl exec $winpodname -- powershell ipconfig /all)
+    log "$ipconfig"
+    log "getting the last 50 events to check timeout failure"
+    hdr=$(kubectl get events | head -n 1)
+    log "$hdr"
+    evt=$(kubectl get events | tail -n 50)
+    log "$evt"
     log "K8S-Windows: failed to get outbound internet connection inside simpleweb container"
     exit 1
   fi

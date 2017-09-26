@@ -10,9 +10,9 @@ import "github.com/Azure/acs-engine/pkg/api/agentPoolOnlyApi/v20170831"
 // for converting.
 ///////////////////////////////////////////////////////////
 
-// ConvertContainerServiceToV20170831 converts an unversioned ContainerService to a v20170831 ContainerService
-func ConvertContainerServiceToV20170831AgentPoolOnly(api *ContainerService) *v20170831.HostedMaster {
-	v20170831HCP := &v20170831.HostedMaster{}
+// ConvertContainerServiceToV20170831AgentPoolOnly converts an unversioned ContainerService to a v20170831 ContainerService
+func ConvertContainerServiceToV20170831AgentPoolOnly(api *ContainerService) *v20170831.ManagedCluster {
+	v20170831HCP := &v20170831.ManagedCluster{}
 	v20170831HCP.ID = api.ID
 	v20170831HCP.Location = api.Location
 	v20170831HCP.Name = api.Name
@@ -41,8 +41,13 @@ func convertResourcePurchasePlanToV20170831AgentPoolOnly(api *ResourcePurchasePl
 func convertPropertiesToV20170831AgentPoolOnly(api *Properties, p *v20170831.Properties) {
 	p.ProvisioningState = v20170831.ProvisioningState(api.ProvisioningState)
 	if api.OrchestratorProfile != nil {
-		p.KubernetesVersion = api.OrchestratorProfile.OrchestratorVersion
-		p.KubernetesRelease = api.OrchestratorProfile.OrchestratorRelease
+		if api.OrchestratorProfile.OrchestratorRelease != "" {
+			p.KubernetesVersion = api.OrchestratorProfile.OrchestratorVersion
+		}
+
+		if api.OrchestratorProfile.OrchestratorVersion != "" {
+			p.KubernetesRelease = api.OrchestratorProfile.OrchestratorRelease
+		}
 	}
 	if api.HostedMasterProfile != nil {
 		p.DNSPrefix = api.HostedMasterProfile.DNSPrefix

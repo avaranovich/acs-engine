@@ -14,9 +14,9 @@ type ResourcePurchasePlan struct {
 	Publisher     string `json:"publisher,omitempty"`
 }
 
-// HostedMaster complies with the ARM model of
+// ManagedCluster complies with the ARM model of
 // resource definition in a JSON template.
-type HostedMaster struct {
+type ManagedCluster struct {
 	ID       string                `json:"id,omitempty"`
 	Location string                `json:"location,omitempty" validate:"required"`
 	Name     string                `json:"name,omitempty"`
@@ -38,7 +38,7 @@ type Properties struct {
 	LinuxProfile            *LinuxProfile            `json:"linuxProfile,omitempty" validate:"required"`
 	WindowsProfile          *WindowsProfile          `json:"windowsProfile,omitempty"`
 	ServicePrincipalProfile *ServicePrincipalProfile `json:"servicePrincipalProfile,omitempty"`
-	AccessProfiles          []*AccessProfile         `json:"accessProfiles,omitempty"` //@todo(jahanse): not used
+	AccessProfiles          map[string]AccessProfile `json:"accessProfiles,omitempty"`
 }
 
 // ServicePrincipalProfile contains the client and secret used by the cluster for Azure Resource CRUD
@@ -118,7 +118,6 @@ type AgentPoolProfile struct {
 
 // AccessProfile represents role name and kubeconfig
 type AccessProfile struct {
-	RoleName   string `json:"roleName"`
 	KubeConfig string `json:"kubeConfig"`
 }
 

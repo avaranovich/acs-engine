@@ -11,13 +11,13 @@ import (
 )
 
 var (
-	validate                *validator.Validate
-	keyvaultSecretPathRegex *regexp.Regexp
+	validate        *validator.Validate
+	keyvaultIDRegex *regexp.Regexp
 )
 
 func init() {
 	validate = validator.New()
-	keyvaultSecretPathRegex = regexp.MustCompile(`^(/subscriptions/\S+/resourceGroups/\S+/providers/Microsoft.KeyVault/vaults/\S+)/secrets/([^/\s]+)(/(\S+))?$`)
+	keyvaultIDRegex = regexp.MustCompile(`^/subscriptions/\S+/resourceGroups/\S+/providers/Microsoft.KeyVault/vaults/[^/\s]+$`)
 }
 
 // Validate implements APIObject
@@ -30,6 +30,7 @@ func (o *OrchestratorProfile) Validate() error {
 		switch o.OrchestratorRelease {
 		case common.DCOSRelease1Dot8:
 		case common.DCOSRelease1Dot9:
+		case common.DCOSRelease1Dot10:
 		case "":
 		default:
 			return fmt.Errorf("OrchestratorProfile has unknown orchestrator release: %s", o.OrchestratorRelease)
@@ -136,15 +137,22 @@ func (a *Properties) Validate() error {
 		if a.ServicePrincipalProfile == nil {
 			return fmt.Errorf("ServicePrincipalProfile must be specified with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
 		}
-
-		if (len(a.ServicePrincipalProfile.Secret) == 0 && len(a.ServicePrincipalProfile.KeyvaultSecretRef) == 0) ||
-			(len(a.ServicePrincipalProfile.Secret) != 0 && len(a.ServicePrincipalProfile.KeyvaultSecretRef) != 0) {
+		if e := validate.Var(a.ServicePrincipalProfile.ClientID, "required"); e != nil {
+			return fmt.Errorf("the service principal client ID must be specified with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
+		}
+		if (len(a.ServicePrincipalProfile.Secret) == 0 && a.ServicePrincipalProfile.KeyvaultSecretRef == nil) ||
+			(len(a.ServicePrincipalProfile.Secret) != 0 && a.ServicePrincipalProfile.KeyvaultSecretRef != nil) {
 			return fmt.Errorf("either the service principal client secret or keyvault secret reference must be specified with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
 		}
 
-		if len(a.ServicePrincipalProfile.KeyvaultSecretRef) != 0 {
-			parts := keyvaultSecretPathRegex.FindStringSubmatch(a.ServicePrincipalProfile.KeyvaultSecretRef)
-			if len(parts) != 5 {
+		if a.ServicePrincipalProfile.KeyvaultSecretRef != nil {
+			if e := validate.Var(a.ServicePrincipalProfile.KeyvaultSecretRef.VaultID, "required"); e != nil {
+				return fmt.Errorf("the Keyvault ID must be specified for the Service Principle with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
+			}
+			if e := validate.Var(a.ServicePrincipalProfile.KeyvaultSecretRef.SecretName, "required"); e != nil {
+				return fmt.Errorf("the Keyvault Secret must be specified for the Service Principle with Orchestrator %s", a.OrchestratorProfile.OrchestratorType)
+			}
+			if !keyvaultIDRegex.MatchString(a.ServicePrincipalProfile.KeyvaultSecretRef.VaultID) {
 				return fmt.Errorf("service principal client keyvault secret reference is of incorrect format")
 			}
 		}

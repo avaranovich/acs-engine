@@ -2,7 +2,9 @@
     "targetEnvironment": "[parameters('targetEnvironment')]",
     "maxVMsPerPool": 100,
     "apiVersionDefault": "2016-03-30",
+    "apiVersionLinkDefault": "2015-01-01",
     "singleQuote": "'",
+    "doubleSingleQuote": "''",
 {{if .LinuxProfile.HasSecrets}}
     "linuxProfileSecrets" :
       [
@@ -31,7 +33,7 @@
     "agentWindowsPublisher": "MicrosoftWindowsServer",
     "agentWindowsOffer": "WindowsServer",
     "agentWindowsSku": "2016-Datacenter-with-Containers",
-    "agentWindowsVersion": "latest",
+    "agentWindowsVersion": "[parameters('agentWindowsVersion')]",
     "dcosWindowsBootstrapURL" : "[parameters('dcosWindowsBootstrapURL')]",
     "windowsCustomScriptSuffix": " $inputFile = '%SYSTEMDRIVE%\\AzureData\\CustomData.bin' ; $outputFile = '%SYSTEMDRIVE%\\AzureData\\dcosWindowsProvision.ps1' ; $inputStream = New-Object System.IO.FileStream $inputFile, ([IO.FileMode]::Open), ([IO.FileAccess]::Read), ([IO.FileShare]::Read) ; $sr = New-Object System.IO.StreamReader(New-Object System.IO.Compression.GZipStream($inputStream, [System.IO.Compression.CompressionMode]::Decompress)) ; $sr.ReadToEnd() | Out-File($outputFile) ; Invoke-Expression('{0} {1}' -f $outputFile, $arguments) ; ",
     "windowsMasterCustomScriptArguments": "[concat('$arguments = ', variables('singleQuote'),'-MasterCount ', variables('masterCount'), ' -firstMasterIP ', parameters('firstConsecutiveStaticIP'), variables('singleQuote'), ' ; ')]",
@@ -97,10 +99,10 @@
     "nameSuffix": "[parameters('nameSuffix')]",
     "oauthEnabled": "{{.MasterProfile.OAuthEnabled}}",
     "orchestratorName": "dcos",
-    "osImageOffer": "UbuntuServer",
-    "osImagePublisher": "Canonical",
-    "osImageSKU": "16.04-LTS",
-    "osImageVersion": "16.04.201706191",
+    "osImageOffer": "[parameters('osImageOffer')]", 
+    "osImagePublisher": "[parameters('osImagePublisher')]", 
+    "osImageSKU": "[parameters('osImageSKU')]", 
+    "osImageVersion": "[parameters('osImageVersion')]",
     "sshKeyPath": "[concat('/home/', variables('adminUsername'), '/.ssh/authorized_keys')]",
     "sshRSAPublicKey": "[parameters('sshRSAPublicKey')]",
     "locations": [

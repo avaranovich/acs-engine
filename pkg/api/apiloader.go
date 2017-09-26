@@ -3,6 +3,10 @@ package api
 import (
 	"encoding/json"
 	"io/ioutil"
+	"reflect"
+
+	"github.com/Azure/acs-engine/pkg/api/common"
+	"github.com/Azure/acs-engine/pkg/api/v20170930"
 
 	"github.com/Azure/acs-engine/pkg/api/agentPoolOnlyApi/v20170831"
 	apvlabs "github.com/Azure/acs-engine/pkg/api/agentPoolOnlyApi/vlabs"
@@ -12,7 +16,7 @@ import (
 	"github.com/Azure/acs-engine/pkg/api/v20170701"
 	"github.com/Azure/acs-engine/pkg/api/vlabs"
 	"github.com/Azure/acs-engine/pkg/i18n"
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // Apiloader represents the object that loads api model
@@ -39,8 +43,15 @@ func (a *Apiloader) DeserializeContainerService(contents []byte, validate bool, 
 	version := m.APIVersion
 	service, err := a.LoadContainerService(contents, version, validate, existingContainerService)
 	if service == nil || err != nil {
-		log.Infof("Error returned by LoadContainerService: %+v. Attempting to load container service using LoadContainerServiceForAgentPoolOnlyCluster", err)
-		service, err = a.LoadContainerServiceForAgentPoolOnlyCluster(contents, version, validate)
+		if isAgentPoolOnlyClusterJSON(contents) {
+			log.Info("No masterProfile: interpreting API model as agent pool only")
+			service, err := a.LoadContainerServiceForAgentPoolOnlyCluster(contents, version, validate)
+			if service == nil || err != nil {
+				log.Infof("Error returned by LoadContainerServiceForAgentPoolOnlyCluster: %+v", err)
+			}
+			return service, version, err
+		}
+		log.Infof("Error returned by LoadContainerService: %+v", err)
 	}
 
 	return service, version, err
@@ -126,6 +137,9 @@ func (a *Apiloader) LoadContainerService(
 		if e := json.Unmarshal(contents, &containerService); e != nil {
 			return nil, e
 		}
+		if e := checkJSONKeys(contents, reflect.TypeOf(*containerService), reflect.TypeOf(TypeMeta{})); e != nil {
+			return nil, e
+		}
 		if existingContainerService != nil {
 			vecs := ConvertContainerServiceToVLabs(existingContainerService)
 			if e := containerService.Merge(vecs); e != nil {
@@ -147,26 +161,86 @@ func (a *Apiloader) LoadContainerService(
 func (a *Apiloader) LoadContainerServiceForAgentPoolOnlyCluster(contents []byte, version string, validate bool) (*ContainerService, error) {
 	switch version {
 	case v20170831.APIVersion:
-		hostedMaster := &v20170831.HostedMaster{}
-		if e := json.Unmarshal(contents, &hostedMaster); e != nil {
+		managedCluster := &v20170831.ManagedCluster{}
+		if e := json.Unmarshal(contents, &managedCluster); e != nil {
 			return nil, e
 		}
-		if e := hostedMaster.Properties.Validate(); validate && e != nil {
+		setManagedClusterDefaultsv20170831(managedCluster)
+		if e := managedCluster.Properties.Validate(); validate && e != nil {
 			return nil, e
 		}
-		return ConvertV20170831AgentPoolOnly(hostedMaster), nil
+		return ConvertV20170831AgentPoolOnly(managedCluster), nil
 	case apvlabs.APIVersion:
-		hostedMaster := &apvlabs.HostedMaster{}
-		if e := json.Unmarshal(contents, &hostedMaster); e != nil {
+		managedCluster := &apvlabs.ManagedCluster{}
+		if e := json.Unmarshal(contents, &managedCluster); e != nil {
 			return nil, e
 		}
-		if e := hostedMaster.Properties.Validate(); validate && e != nil {
+		setManagedClusterDefaultsvlabs(managedCluster)
+		if e := managedCluster.Properties.Validate(); validate && e != nil {
 			return nil, e
 		}
-		return ConvertVLabsAgentPoolOnly(hostedMaster), nil
+		return ConvertVLabsAgentPoolOnly(managedCluster), nil
 	default:
 		return nil, a.Translator.Errorf("unrecognized APIVersion in LoadContainerServiceForAgentPoolOnlyCluster '%s'", version)
 	}
+}
+
+// UpdateContainerServiceForUpgrade pre-validates upgrade operation and updates container service
+func (a *Apiloader) UpdateContainerServiceForUpgrade(
+	contents []byte,
+	version string,
+	cs *ContainerService,
+	allowCurrentVersionUpgrade bool) error {
+	unverOrch := &OrchestratorProfile{}
+
+	switch version {
+	case v20170930.APIVersion:
+		up := &v20170930.OrchestratorProfile{}
+		if e := json.Unmarshal(contents, up); e != nil {
+			return a.Translator.Errorf(e.Error())
+		}
+		if e := up.ValidateForUpgrade(); e != nil {
+			return a.Translator.Errorf(e.Error())
+		}
+		convertV20170930OrchestratorProfile(up, unverOrch)
+
+	case vlabs.APIVersion:
+		up := &vlabs.OrchestratorProfile{}
+		if e := json.Unmarshal(contents, up); e != nil {
+			return a.Translator.Errorf(e.Error())
+		}
+		if e := up.ValidateForUpgrade(); e != nil {
+			return a.Translator.Errorf(e.Error())
+		}
+		convertVLabsOrchestratorProfile(up, unverOrch)
+
+	default:
+		return a.Translator.Errorf("unrecognized APIVersion in UpdateContainerServiceForUpgrade '%s'", version)
+	}
+
+	// get available upgrades for container service
+	orchestratorInfo, e := GetOrchestratorVersionProfile(cs.Properties.OrchestratorProfile)
+	if e != nil {
+		return e
+	}
+
+	// add current version if upgrade has failed
+	if allowCurrentVersionUpgrade {
+		release := cs.Properties.OrchestratorProfile.OrchestratorRelease
+		orchestratorInfo.Upgrades = append(orchestratorInfo.Upgrades, &OrchestratorProfile{
+			OrchestratorRelease: release,
+			OrchestratorVersion: common.KubeReleaseToVersion[release]})
+	}
+	// validate desired upgrade version and set goal state
+	for _, up := range orchestratorInfo.Upgrades {
+		if up.OrchestratorRelease == unverOrch.OrchestratorRelease {
+			cs.Properties.OrchestratorProfile.OrchestratorRelease = up.OrchestratorRelease
+			cs.Properties.OrchestratorProfile.OrchestratorVersion = up.OrchestratorVersion
+			return nil
+		}
+	}
+	return a.Translator.Errorf("Kubernetes %s cannot be upgraded to %s",
+		cs.Properties.OrchestratorProfile.OrchestratorRelease, unverOrch.OrchestratorRelease)
 }
 
 // SerializeContainerService takes an unversioned container service and returns the bytes
@@ -244,7 +318,7 @@ func (a *Apiloader) serializeHostedContainerService(containerService *ContainerS
 	case v20170831.APIVersion:
 		v20170831ContainerService := ConvertContainerServiceToV20170831AgentPoolOnly(containerService)
 		armContainerService := &V20170831ARMManagedContainerService{}
-		armContainerService.HostedMaster = v20170831ContainerService
+		armContainerService.ManagedCluster = v20170831ContainerService
 		armContainerService.APIVersion = version
 		b, err := json.MarshalIndent(armContainerService, "", "  ")
 		if err != nil {
@@ -295,4 +369,14 @@ func setContainerServiceDefaultsvlabs(c *vlabs.ContainerService) {
 	if c.Properties.OrchestratorProfile != nil {
 		c.Properties.OrchestratorProfile.OrchestratorVersion = ""
 	}
+}
+
+// Sets default HostedMaster property values for any appropriate zero values
+func setManagedClusterDefaultsv20170831(hm *v20170831.ManagedCluster) {
+	hm.Properties.KubernetesVersion = ""
+}
+
+// Sets default HostedMaster property values for any appropriate zero values
+func setManagedClusterDefaultsvlabs(hm *apvlabs.ManagedCluster) {
+	hm.Properties.KubernetesVersion = ""
 }

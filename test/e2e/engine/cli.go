@@ -7,15 +7,11 @@ import (
 
 // Generate will run acs-engine generate on a given cluster definition
 func (e *Engine) Generate() error {
-	cmd := exec.Command("acs-engine", "generate", e.ClusterDefinitionTemplate, "--output-directory", e.GeneratedDefinitionPath)
-	err := cmd.Start()
+	out, err := exec.Command("./bin/acs-engine", "generate", e.Config.ClusterDefinitionTemplate, "--output-directory", e.Config.GeneratedDefinitionPath).CombinedOutput()
 	if err != nil {
-		log.Printf("Error while trying to start generate:%s\n", err)
-		return err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		log.Printf("Error while trying to generate acs-engine template with cluster definition - %s: %s", e.GeneratedDefinitionPath, err)
+		log.Printf("Error while trying to generate acs-engine template with cluster definition - %s: %s\n", e.Config.ClusterDefinitionTemplate, err)
+		log.Printf("Command:./bin/acs-engine generate %s --output-directory %s\n", e.Config.ClusterDefinitionTemplate, e.Config.GeneratedDefinitionPath)
+		log.Printf("Output:%s\n", out)
 		return err
 	}
 	return nil

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
 	"path/filepath"
 
 	"github.com/Azure/acs-engine/pkg/api"
+	"github.com/Azure/acs-engine/test/e2e/config"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -19,11 +19,9 @@ type Config struct {
 	MasterDNSPrefix       string `envconfig:"DNS_PREFIX"`
 	PublicSSHKey          string `envconfig:"PUBLIC_SSH_KEY"`
 	WindowsAdminPasssword string `envconfig:"WINDOWS_ADMIN_PASSWORD"`
-}
+	OrchestratorRelease   string `envconfig:"ORCHESTRATOR_RELEASE"`
+	OutputDirectory       string `envconfig:"OUTPUT_DIR" default:"_output"`
 
-// Engine holds necessary information to interact with acs-engine cli
-type Engine struct {
-	Config                    *Config
 	ClusterDefinitionPath     string // The original template we want to use to build the cluster from.
 	ClusterDefinitionTemplate string // This is the template after we splice in the environment variables
 	GeneratedDefinitionPath   string // Holds the contents of running acs-engine generate
@@ -33,43 +31,40 @@ type Engine struct {
 	GeneratedParametersPath   string // azuredeploy.parameters.json path
 }
 
+// Engine holds necessary information to interact with acs-engine cli
+type Engine struct {
+	Config            *Config
+	ClusterDefinition *api.VlabsARMContainerService // Holds the parsed ClusterDefinition
+}
+
 // ParseConfig will return a new engine config struct taking values from env vars
-func ParseConfig() (*Config, error) {
+func ParseConfig(cwd, clusterDefinition, name string) (*Config, error) {
 	c := new(Config)
 	if err := envconfig.Process("config", c); err != nil {
 		return nil, err
 	}
+
+	clusterDefinitionTemplate := fmt.Sprintf("%s/%s.json", c.OutputDirectory, name)
+	generatedDefinitionPath := fmt.Sprintf("%s/%s", c.OutputDirectory, name)
+	c.DefinitionName = name
+	c.ClusterDefinitionPath = filepath.Join(cwd, clusterDefinition)
+	c.ClusterDefinitionTemplate = filepath.Join(cwd, clusterDefinitionTemplate)
+	c.OutputPath = filepath.Join(cwd, c.OutputDirectory)
+	c.GeneratedDefinitionPath = filepath.Join(cwd, generatedDefinitionPath)
+	c.GeneratedTemplatePath = filepath.Join(cwd, generatedDefinitionPath, "azuredeploy.json")
+	c.GeneratedParametersPath = filepath.Join(cwd, generatedDefinitionPath, "azuredeploy.parameters.json")
 	return c, nil
 }
 
 // Build takes a template path and will inject values based on provided environment variables
 // it will then serialize the structs back into json and save it to outputPath
-func Build(templatePath, outputPath, definitionName string) (*Engine, error) {
-	config, err := ParseConfig()
+func Build(cfg *config.Config, subnetID string) (*Engine, error) {
+	config, err := ParseConfig(cfg.CurrentWorkingDir, cfg.ClusterDefinition, cfg.Name)
 	if err != nil {
 		log.Printf("Error while trying to build Engine Configuration:%s\n", err)
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		log.Printf("Error while trying to get the current working directory: %s\n", err)
-		return nil, err
-	}
-
-	clusterDefinitionTemplate := fmt.Sprintf("%s/%s.json", outputPath, definitionName)
-	generatedDefinitionPath := fmt.Sprintf("%s/%s", outputPath, definitionName)
-	engine := Engine{
-		Config:                    config,
-		DefinitionName:            definitionName,
-		ClusterDefinitionPath:     filepath.Join(cwd, "../../..", templatePath),
-		ClusterDefinitionTemplate: filepath.Join(cwd, "../../..", clusterDefinitionTemplate),
-		OutputPath:                filepath.Join(cwd, "../../..", outputPath),
-		GeneratedDefinitionPath:   filepath.Join(cwd, "../../..", generatedDefinitionPath),
-		GeneratedTemplatePath:     filepath.Join(cwd, "../../..", generatedDefinitionPath, "azuredeploy.json"),
-		GeneratedParametersPath:   filepath.Join(cwd, "../../..", generatedDefinitionPath, "azuredeploy.parameters.json"),
-	}
-
-	cs, err := engine.parse()
+	cs, err := Parse(config.ClusterDefinitionPath)
 	if err != nil {
 		return nil, err
 	}
@@ -90,18 +85,72 @@ func Build(templatePath, outputPath, definitionName string) (*Engine, error) {
 	if config.WindowsAdminPasssword != "" {
 		cs.ContainerService.Properties.WindowsProfile.AdminPassword = config.WindowsAdminPasssword
 	}
-	err = engine.write(cs)
-	if err != nil {
-		return nil, err
+
+	if config.OrchestratorRelease != "" {
+		cs.ContainerService.Properties.OrchestratorProfile.OrchestratorRelease = config.OrchestratorRelease
 	}
-	return &engine, nil
+
+	if cfg.CreateVNET {
+		cs.ContainerService.Properties.MasterProfile.VnetSubnetID = subnetID
+		for _, p := range cs.ContainerService.Properties.AgentPoolProfiles {
+			p.VnetSubnetID = subnetID
+		}
+	}
+
+	return &Engine{
+		Config:            config,
+		ClusterDefinition: cs,
+	}, nil
+}
+
+// NodeCount returns the number of nodes that should be provisioned for a given cluster definition
+func (e *Engine) NodeCount() int {
+	expectedCount := e.ClusterDefinition.Properties.MasterProfile.Count
+	for _, pool := range e.ClusterDefinition.Properties.AgentPoolProfiles {
+		expectedCount = expectedCount + pool.Count
+	}
+	return expectedCount
+}
+
+// HasLinuxAgents will return true if there is at least 1 linux agent pool
+func (e *Engine) HasLinuxAgents() bool {
+	for _, ap := range e.ClusterDefinition.Properties.AgentPoolProfiles {
+		if ap.OSType == "" || ap.OSType == "Linux" {
+			return true
+		}
+	}
+	return false
+}
+
+// HasWindowsAgents will return true is there is at least 1 windows agent pool
+func (e *Engine) HasWindowsAgents() bool {
+	for _, ap := range e.ClusterDefinition.Properties.AgentPoolProfiles {
+		if ap.OSType == "Windows" {
+			return true
+		}
+	}
+	return false
+}
+
+// Write will write the cluster definition to disk
+func (e *Engine) Write() error {
+	json, err := json.Marshal(e.ClusterDefinition)
+	if err != nil {
+		log.Printf("Error while trying to serialize Container Service object to json:%s\n%+v\n", err, e.ClusterDefinition)
+		return err
+	}
+	err = ioutil.WriteFile(e.Config.ClusterDefinitionTemplate, json, 0777)
+	if err != nil {
+		log.Printf("Error while trying to write container service definition to file (%s):%s\n%s\n", e.Config.ClusterDefinitionTemplate, err, string(json))
+	}
+	return nil
 }
 
 // Parse takes a template path and will parse that into a api.VlabsARMContainerService
-func (e *Engine) parse() (*api.VlabsARMContainerService, error) {
-	contents, err := ioutil.ReadFile(e.ClusterDefinitionPath)
+func Parse(path string) (*api.VlabsARMContainerService, error) {
+	contents, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Printf("Error while trying to read cluster definition at (%s):%s\n", e.ClusterDefinitionPath, err)
+		log.Printf("Error while trying to read cluster definition at (%s):%s\n", path, err)
 		return nil, err
 	}
 	cs := api.VlabsARMContainerService{}
@@ -110,17 +159,4 @@ func (e *Engine) parse() (*api.VlabsARMContainerService, error) {
 		return nil, err
 	}
 	return &cs, nil
-}
-
-func (e *Engine) write(cs *api.VlabsARMContainerService) error {
-	json, err := json.Marshal(cs)
-	if err != nil {
-		log.Printf("Error while trying to serialize Container Service object to json:%s\n%+v\n", err, cs)
-		return err
-	}
-	err = ioutil.WriteFile(e.ClusterDefinitionTemplate, json, 0777)
-	if err != nil {
-		log.Printf("Error while trying to write container service definition to file (%s):%s\n%s\n", e.ClusterDefinitionTemplate, err, string(json))
-	}
-	return nil
 }

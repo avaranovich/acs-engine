@@ -20,6 +20,23 @@ const (
 	Linux   OSType = "Linux"
 )
 
+// the LinuxDistros supported by vlabs
+const (
+	Ubuntu Distro = "ubuntu"
+	RHEL   Distro = "rhel"
+)
+
+const (
+	// SwarmVersion is the Swarm orchestrator version
+	SwarmVersion = "swarm:1.1.0"
+	// SwarmDockerComposeVersion is the Docker Compose version
+	SwarmDockerComposeVersion = "1.6.2"
+	// DockerCEVersion is the DockerCE orchestrator version
+	DockerCEVersion = "17.03.*"
+	// DockerCEDockerComposeVersion is the Docker Compose version
+	DockerCEDockerComposeVersion = "1.14.0"
+)
+
 // validation values
 const (
 	// MinAgentCount are the minimum number of agents per agent pool
@@ -58,16 +75,16 @@ const (
 	// KubernetesRelease1Dot5 is the major.minor string prefix for 1.5 versions of kubernetes
 	KubernetesRelease1Dot5 string = "1.5"
 	// KubernetesDefaultRelease is the default major.minor version for kubernetes
-	KubernetesDefaultRelease string = KubernetesRelease1Dot6
+	KubernetesDefaultRelease string = KubernetesRelease1Dot7
 )
 
 const (
+	// DCOSRelease1Dot10 is the major.minor string prefix for 1.10 versions of DCOS
+	DCOSRelease1Dot10 string = "1.10"
 	// DCOSRelease1Dot9 is the major.minor string prefix for 1.9 versions of DCOS
 	DCOSRelease1Dot9 string = "1.9"
 	// DCOSRelease1Dot8 is the major.minor string prefix for 1.8 versions of DCOS
 	DCOSRelease1Dot8 string = "1.8"
-	// DCOSRelease1Dot7 is the major.minor string prefix for 1.7 versions of DCOS
-	DCOSRelease1Dot7 string = "1.7"
 	// DCOSDefaultRelease is the default major.minor version for DCOS
 	DCOSDefaultRelease string = DCOSRelease1Dot9
 )
@@ -76,13 +93,12 @@ const (
 var DCOSReleaseToVersion = map[string]string{
 	DCOSRelease1Dot9: "1.9.0",
 	DCOSRelease1Dot8: "1.8.8",
-	DCOSRelease1Dot7: "1.7.3",
 }
 
 // KubernetesReleaseToVersion maps a major.minor release to an full major.minor.patch version
 var KubernetesReleaseToVersion = map[string]string{
-	KubernetesRelease1Dot7: "1.7.4",
-	KubernetesRelease1Dot6: "1.6.6",
+	KubernetesRelease1Dot7: "1.7.5",
+	KubernetesRelease1Dot6: "1.6.9",
 	KubernetesRelease1Dot5: "1.5.7",
 }
 

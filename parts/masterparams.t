@@ -10,6 +10,14 @@
       }, 
       "type": "string"
     },
+    {{range .ExtensionProfiles}}
+      "{{.Name}}Parameters": {
+        "metadata": {
+        "description": "Parameters for the extension"
+      }, 
+      "type": "securestring"
+      },
+    {{end}}
 {{if not IsHostedMaster }}
   {{if .MasterProfile.IsCustomVNET}}
     "masterVnetSubnetID": {
@@ -29,6 +37,13 @@
   {{end}}
 {{end}}
 {{if IsHostedMaster}}
+    "masterSubnet": {
+      "defaultValue": "{{.HostedMasterProfile.Subnet}}",
+      "metadata": {
+        "description": "Sets the subnet for the VMs in the cluster."
+      },
+      "type": "string"
+    },
     "kubernetesEndpoint": {
       "defaultValue": "{{.HostedMasterProfile.FQDN}}",
       "metadata": {
@@ -62,6 +77,41 @@
       "defaultValue": "{{GetUniqueNameSuffix}}",
       "metadata": {
         "description": "A string hash of the master DNS name to uniquely identify the cluster."
+      },
+      "type": "string"
+    },
+    "osImageOffer": {
+      "defaultValue": "UbuntuServer",
+      "metadata": {
+        "description": "Linux OS image type."
+      },
+      "type": "string"
+    }, 
+    "osImagePublisher": {
+      "defaultValue": "Canonical",
+      "metadata": {
+        "description": "OS image publisher."
+      },
+      "type": "string"
+    }, 
+    "osImageSKU": {
+      "defaultValue": "16.04-LTS",
+      "metadata": {
+        "description": "OS image SKU."
+      },
+      "type": "string"
+    }, 
+    "osImageVersion": {
+      "defaultValue": "16.04.201706191",
+      "metadata": {
+        "description": "OS image version."
+      },
+      "type": "string"
+    },
+    "fqdnEndpointSuffix":{
+      "defaultValue": "%s.%s.cloudapp.azure.com",
+      "metadata": {
+        "description": "Endpoint of FQDN."
       },
       "type": "string"
     },

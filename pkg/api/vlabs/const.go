@@ -23,6 +23,12 @@ const (
 	Linux   OSType = "Linux"
 )
 
+// the LinuxDistros supported by vlabs
+const (
+	Ubuntu Distro = "ubuntu"
+	RHEL   Distro = "rhel"
+)
+
 // validation values
 const (
 	// MinAgentCount are the minimum number of agents per agent pool
@@ -64,4 +70,10 @@ const (
 // Network policy
 var (
 	NetworkPolicyValues = [...]string{"", "none", "azure", "calico"}
+)
+
+// Kubernetes configuration
+const (
+	// KubernetesMinMaxPods is the minimum valid value for MaxPods, necessary for running kube-system pods
+	KubernetesMinMaxPods = 5
 )

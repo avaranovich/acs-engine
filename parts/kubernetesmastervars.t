@@ -34,6 +34,14 @@
     "kubernetesKubeDNSSpec": "[parameters('kubernetesKubeDNSSpec')]",
     "kubernetesDNSMasqSpec": "[parameters('kubernetesDNSMasqSpec')]",
     "networkPolicy": "[parameters('networkPolicy')]",
+    "cniPluginsURL":"[parameters('cniPluginsURL')]",
+    "vnetCniLinuxPluginsURL":"[parameters('vnetCniLinuxPluginsURL')]",
+    "vnetCniWindowsPluginsURL":"[parameters('vnetCniWindowsPluginsURL')]",
+    "maxPods": "[parameters('maxPods')]",
+    "vnetCidr": "[parameters('vnetCidr')]",
+    "calicoConfigURL":"[parameters('calicoConfigURL')]",
+    "gcHighThreshold":"[parameters('gcHighThreshold')]",
+    "gcLowThreshold":"[parameters('gcLowThreshold')]",
 {{ if UseManagedIdentity }}
     "servicePrincipalClientId": "msi",
     "servicePrincipalClientSecret": "msi",
@@ -48,6 +56,10 @@
     "masterVMSize": "[parameters('masterVMSize')]",
 {{end}}
     "sshPublicKeyData": "[parameters('sshRSAPublicKey')]",
+{{if .HasAadProfile}}
+    "aadServerAppId": "[parameters('aadServerAppId')]",
+    "aadTenantId": "[parameters('aadTenantId')]",
+{{end}}
 {{if not IsHostedMaster}}
   {{if GetClassicMode}}
     "masterCount": "[parameters('masterCount')]",
@@ -57,6 +69,7 @@
     "masterOffset": "[parameters('masterOffset')]",
 {{end}}
     "apiVersionDefault": "2016-03-30",
+    "apiVersionLinkDefault": "2015-01-01",
     "locations": [
          "[resourceGroup().location]",
          "[parameters('location')]"
@@ -65,10 +78,11 @@
     "masterAvailabilitySet": "[concat('master-availabilityset-', variables('nameSuffix'))]",
     "nameSuffix": "[parameters('nameSuffix')]",
     "orchestratorName": "k8s",
-    "osImageOffer": "UbuntuServer",
-    "osImagePublisher": "Canonical",
-    "osImageSKU": "16.04-LTS",
-    "osImageVersion": "16.04.201706191",
+    "fqdnEndpointSuffix":"[parameters('fqdnEndpointSuffix')]",
+    "osImageOffer": "[parameters('osImageOffer')]", 
+    "osImagePublisher": "[parameters('osImagePublisher')]", 
+    "osImageSKU": "[parameters('osImageSKU')]", 
+    "osImageVersion": "[parameters('osImageVersion')]",
     "resourceGroup": "[resourceGroup().name]",
 {{if not IsHostedMaster}}
     "routeTableName": "[concat(variables('masterVMNamePrefix'),'routetable')]",
@@ -102,6 +116,7 @@
   {{end}}
 {{end}}
     "provisionScript": "{{GetKubernetesB64Provision}}",
+    "generateProxyCertsScript": "{{GetKubernetesB64GenerateProxyCerts}}",
     "orchestratorNameVersionTag": "{{.OrchestratorProfile.OrchestratorType}}:{{.OrchestratorProfile.OrchestratorVersion}}",
 {{if IsVNETIntegrated}}
     "allocateNodeCidrs": false,
@@ -123,16 +138,16 @@
     "virtualNetworkName": "[concat(variables('orchestratorName'), '-vnet-', variables('nameSuffix'))]",
   {{end}}
 {{else}}
-    "subnet": "10.0.0/16",
+    "subnet": "[parameters('masterSubnet')]",
     "subnetName": "[concat(variables('orchestratorName'), '-subnet')]",
     "virtualNetworkName": "[concat(variables('orchestratorName'), '-vnet-', variables('nameSuffix'))]",
     "vnetID": "[resourceId('Microsoft.Network/virtualNetworks',variables('virtualNetworkName'))]",
     "vnetSubnetID": "[concat(variables('vnetID'),'/subnets/',variables('subnetName'))]",
     "virtualNetworkName": "[concat(variables('orchestratorName'), '-vnet-', variables('nameSuffix'))]",
 {{end}}
-    "vnetCidr": "10.0.0.0/8",
-    "kubeDnsServiceIp": "10.0.0.10",
-    "kubeServiceCidr": "10.0.0.0/16",
+    "vnetCidr": "[parameters('vnetCidr')]",
+    "kubeDNSServiceIP": "[parameters('kubeDNSServiceIP')]",
+    "kubeServiceCidr": "[parameters('kubeServiceCidr')]",
     "kubeClusterCidr": "[parameters('kubeClusterCidr')]",
     "dockerBridgeCidr": "[parameters('dockerBridgeCidr')]",
 {{if IsKubernetesVersionGe "1.6.0"}}
@@ -246,10 +261,11 @@
     "windowsAdminPassword": "[parameters('windowsAdminPassword')]",
     "kubeBinariesSASURL": "[parameters('kubeBinariesSASURL')]",
     "kubeBinariesVersion": "[parameters('kubeBinariesVersion')]",
+    "windowsTelemetryGUID": "[parameters('windowsTelemetryGUID')]",
     "agentWindowsPublisher": "MicrosoftWindowsServer",
     "agentWindowsOffer": "WindowsServer",
     "agentWindowsSku": "2016-Datacenter-with-Containers",
-    "agentWindowsVersion": "latest",
+    "agentWindowsVersion": "[parameters('agentWindowsVersion')]",
     "singleQuote": "'",
     "windowsCustomScriptSuffix": " $inputFile = '%SYSTEMDRIVE%\\AzureData\\CustomData.bin' ; $outputFile = '%SYSTEMDRIVE%\\AzureData\\CustomDataSetupScript.ps1' ; Copy-Item $inputFile $outputFile ; Invoke-Expression('{0} {1}' -f $outputFile, $arguments) ; "
 {{end}}

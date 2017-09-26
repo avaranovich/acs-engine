@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+
 	"github.com/Azure/acs-engine/pkg/api/agentPoolOnlyApi/v20170831"
 	"github.com/Azure/acs-engine/pkg/api/agentPoolOnlyApi/vlabs"
 )
@@ -14,7 +16,7 @@ import (
 ///////////////////////////////////////////////////////////
 
 // ConvertV20170831AgentPoolOnly converts an AgentPoolOnly object into an in-memory container service
-func ConvertV20170831AgentPoolOnly(v20170831 *v20170831.HostedMaster) *ContainerService {
+func ConvertV20170831AgentPoolOnly(v20170831 *v20170831.ManagedCluster) *ContainerService {
 	c := &ContainerService{}
 	c.ID = v20170831.ID
 	c.Location = v20170831.Location
@@ -70,8 +72,8 @@ func convertV20170831AgentPoolOnlyProperties(obj *v20170831.Properties) *Propert
 	return properties
 }
 
-// ConvertVLabsContainerService converts a vlabs ContainerService to an unversioned ContainerService
-func ConvertVLabsAgentPoolOnly(vlabs *vlabs.HostedMaster) *ContainerService {
+// ConvertVLabsAgentPoolOnly converts a vlabs ContainerService to an unversioned ContainerService
+func ConvertVLabsAgentPoolOnly(vlabs *vlabs.ManagedCluster) *ContainerService {
 	c := &ContainerService{}
 	c.ID = vlabs.ID
 	c.Location = vlabs.Location
@@ -174,6 +176,7 @@ func convertV20170831AgentPoolOnlyWindowsProfile(obj *v20170831.WindowsProfile) 
 func convertVLabsAgentPoolOnlyWindowsProfile(vlabs *vlabs.WindowsProfile, api *WindowsProfile) {
 	api.AdminUsername = vlabs.AdminUsername
 	api.AdminPassword = vlabs.AdminPassword
+	api.ImageVersion = vlabs.ImageVersion
 	// api.Secrets = []KeyVaultSecrets{}
 	// for _, s := range vlabs.Secrets {
 	// 	secret := &KeyVaultSecrets{}
@@ -262,4 +265,24 @@ func convertVLabsAgentPoolOnlyCertificateProfile(vlabs *vlabs.CertificateProfile
 	api.ClientPrivateKey = vlabs.ClientPrivateKey
 	api.KubeConfigCertificate = vlabs.KubeConfigCertificate
 	api.KubeConfigPrivateKey = vlabs.KubeConfigPrivateKey
+}
+
+func isAgentPoolOnlyClusterJSON(contents []byte) bool {
+	properties, propertiesPresent := propertiesAsMap(contents)
+	if !propertiesPresent {
+		return false
+	}
+	_, masterProfilePresent := properties["masterProfile"]
+	return !masterProfilePresent
+}
+
+func propertiesAsMap(contents []byte) (map[string]interface{}, bool) {
+	var raw interface{}
+	json.Unmarshal(contents, &raw)
+	jsonMap := raw.(map[string]interface{})
+	properties, propertiesPresent := jsonMap["properties"]
+	if !propertiesPresent {
+		return nil, false
+	}
+	return properties.(map[string]interface{}), true
 }
